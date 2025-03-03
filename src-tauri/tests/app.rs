@@ -17,9 +17,8 @@ fn test_get_app_configs() {
     assert_eq!(browser.1.mcp_key, "puppeteer");
 }
 
-#[test]
-#[serial]
-fn test_install() {
+#[tokio::test]
+async fn test_app_installation() {
     // Create a direct test with a unique ID
     let test_id = Uuid::new_v4().to_string();
     let temp_dir = tempfile::tempdir().unwrap();
@@ -42,7 +41,7 @@ fn test_install() {
     set_test_config_path(Some(config_path.clone()));
 
     // Install the app
-    let result = app::install("Browser");
+    let result = app::install("Browser".to_string()).await;
     assert!(result.is_ok());
 
     // Wait and verify config file
@@ -63,9 +62,8 @@ fn test_install() {
     set_test_config_path(None);
 }
 
-#[test]
-#[serial]
-fn test_uninstall() {
+#[tokio::test]
+async fn test_app_uninstallation() {
     // Create a direct test with a unique ID
     let test_id = Uuid::new_v4().to_string();
     let temp_dir = tempfile::tempdir().unwrap();
@@ -93,7 +91,7 @@ fn test_uninstall() {
     set_test_config_path(Some(config_path.clone()));
 
     // Uninstall the app
-    let result = app::uninstall("Browser");
+    let result = app::uninstall("Browser".to_string()).await;
     assert!(result.is_ok());
 
     // Wait and verify config file
@@ -114,9 +112,8 @@ fn test_uninstall() {
     set_test_config_path(None);
 }
 
-#[test]
-#[serial]
-fn test_app_status() {
+#[tokio::test]
+async fn test_app_status() {
     // Create a direct test with a unique ID
     let test_id = Uuid::new_v4().to_string();
     let temp_dir = tempfile::tempdir().unwrap();
@@ -144,7 +141,7 @@ fn test_app_status() {
     assert!(result["configured"].is_object());
 
     // Install and check status
-    app::install("Browser").unwrap();
+    app::install("Browser".to_string()).await.unwrap();
     thread::sleep(Duration::from_millis(100));
 
     let result = app::get_app_statuses().unwrap();

@@ -24,12 +24,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
 lazy_static = "1.4.0"
+log = "0.4"
+simplelog = { version = "0.12", features = ["local-offset"] }
+time = { version = "0.3", features = ["formatting"] }
 
 [dev-dependencies]
 tempfile = "3.8"
 uuid = { version = "1.4", features = ["v4"] }
 serial_test = "2.0"
 fleur = { path = ".", features = ["test-utils"] }
+tokio = { version = "1.0", features = ["full"] }
 
 [features]
 test-utils = []

@@ -2,44 +2,72 @@ pub mod app;
 pub mod environment;
 pub mod file_utils;
 
+use log::{error, info};
+use simplelog::{Config, ConfigBuilder, LevelFilter, WriteLogger};
+use std::fs;
+use std::path::PathBuf;
 use tauri::Manager as _;
+use time::macros::format_description;
 use tauri_plugin_updater::{Builder as UpdaterBuilder, UpdaterExt};
+
+fn setup_logger() -> Result<(), Box<dyn std::error::Error>> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let log_dir = home.join("Library/Logs/Fleur");
+    fs::create_dir_all(&log_dir)?;
+    let log_file = log_dir.join("fleur.log");
+
+    let config = ConfigBuilder::new()
+      .set_time_format_custom(format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]Z"))
+      .build();
+
+    WriteLogger::init(
+        LevelFilter::Info,
+        config,
+        fs::File::create(log_file)?,
+    )?;
+    Ok(())
+}
 
 async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
     if let Some(update) = app.updater()?.check().await? {
-        println!("Update available: {}", update.version);
+        info!("Update available: {}", update.version);
         let mut downloaded = 0;
         match update
             .download_and_install(
                 |chunk_length, content_length| {
                     downloaded += chunk_length;
-                    println!("Downloaded {downloaded} from {content_length:?}");
+                    info!("Downloaded {downloaded} from {content_length:?}");
                 },
                 || {
-                    println!("Download finished, preparing to install...");
+                    info!("Download finished, preparing to install...");
                 },
             )
             .await
         {
             Ok(_) => {
-                println!("Update installed successfully, restarting...");
+                info!("Update installed successfully, restarting...");
                 app.restart();
             }
             Err(e) => {
-                println!("Failed to install update: {}", e);
+                error!("Failed to install update: {}", e);
                 if e.to_string().contains("InvalidSignature") {
-                    println!("Update signature verification failed. This could mean the update package has been tampered with or the public key doesn't match.");
+                    error!("Update signature verification failed. This could mean the update package has been tampered with or the public key doesn't match.");
                 }
             }
         }
     } else {
-        println!("No update available");
+        info!("No update available");
     }
     Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize logger
+    if let Err(e) = setup_logger() {
+        eprintln!("Failed to initialize logger: {}", e);
+    }
+
     // Preload dependencies in background
     std::thread::spawn(|| {
         let _ = app::preload_dependencies();
@@ -58,10 +86,11 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            println!("Checking for updates...");
+            info!("Starting Fleur...");
             tauri::async_runtime::spawn(async move {
+                info!("Checking for updates...");
                 if let Err(e) = update(handle).await {
-                    println!("Error checking for updates: {}", e);
+                    error!("Error checking for updates: {}", e);
                 }
             });
             Ok(())

@@ -3,8 +3,8 @@ mod common;
 use common::setup_test_config;
 use fleur_lib::app;
 
-#[test]
-fn test_full_app_lifecycle() {
+#[tokio::test]
+async fn test_full_app_lifecycle() {
     let (_config_path, temp_dir) = setup_test_config();
 
     // Mock home directory
@@ -12,12 +12,12 @@ fn test_full_app_lifecycle() {
     std::env::set_var("HOME", temp_dir.path());
 
     // Test installation
-    let install_result = app::install("Browser");
+    let install_result = app::install("Browser".to_string()).await;
     assert!(install_result.is_ok());
     assert!(app::is_installed("Browser").unwrap());
 
     // Test uninstallation
-    let uninstall_result = app::uninstall("Browser");
+    let uninstall_result = app::uninstall("Browser".to_string()).await;
     assert!(uninstall_result.is_ok());
     assert!(!app::is_installed("Browser").unwrap());
 

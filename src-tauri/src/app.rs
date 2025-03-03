@@ -2,6 +2,7 @@ use crate::environment::{ensure_npx_shim, get_uvx_path};
 use crate::file_utils::{ensure_config_file, ensure_mcp_servers};
 use dirs;
 use lazy_static::lazy_static;
+use log::{error, info};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -111,7 +112,7 @@ pub fn get_app_configs() -> Vec<(String, AppConfig)> {
                 command: String::new(),
                 args: vec![],
             },
-        )
+        ),
     ]
 }
 
@@ -170,11 +171,11 @@ pub fn preload_dependencies() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn install(app_name: &str) -> Result<String, String> {
-    println!("Installing app: {}", app_name);
+pub async fn install(app_name: String) -> Result<(), String> {
+    info!("Installing app: {}", app_name);
 
     let configs = get_app_configs();
-    if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
+    if let Some((_, config)) = configs.iter().find(|(name, _)| name == &app_name) {
         let mut config_json = get_config()?;
         let mcp_key = config.mcp_key.clone();
         let command = config.command.clone();
@@ -201,20 +202,20 @@ pub fn install(app_name: &str) -> Result<String, String> {
                 }
             });
 
-            Ok(format!("Added {} configuration for {}", mcp_key, app_name))
+            Ok(())
         } else {
             Err("Failed to find mcpServers in config".to_string())
         }
     } else {
-        Ok(format!("No configuration available for {}", app_name))
+        Ok(())
     }
 }
 
 #[tauri::command]
-pub fn uninstall(app_name: &str) -> Result<String, String> {
-    println!("Uninstalling app: {}", app_name);
+pub async fn uninstall(app_name: String) -> Result<(), String> {
+    info!("Uninstalling app: {}", app_name);
 
-    if let Some((_, config)) = get_app_configs().iter().find(|(name, _)| name == app_name) {
+    if let Some((_, config)) = get_app_configs().iter().find(|(name, _)| name == &app_name) {
         let mut config_json = get_config()?;
 
         if let Some(mcp_servers) = config_json
@@ -223,18 +224,15 @@ pub fn uninstall(app_name: &str) -> Result<String, String> {
         {
             if mcp_servers.remove(&config.mcp_key).is_some() {
                 save_config(&config_json)?;
-                Ok(format!(
-                    "Removed {} configuration for {}",
-                    config.mcp_key, app_name
-                ))
+                Ok(())
             } else {
-                Ok(format!("Configuration for {} was not found", app_name))
+                Ok(())
             }
         } else {
             Err("Failed to find mcpServers in config".to_string())
         }
     } else {
-        Ok(format!("No configuration available for {}", app_name))
+        Ok(())
     }
 }
 

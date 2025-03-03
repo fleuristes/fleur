@@ -1,3 +1,5 @@
+use log::{debug, error, info};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -40,13 +42,25 @@ pub fn get_uvx_path() -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+pub fn get_nvm_dir() -> PathBuf {
+    if cfg!(test) {
+        debug!("Using test mock path");
+        PathBuf::from("/tmp/nvm")
+    } else {
+        debug!("Using real implementation path");
+        dirs::home_dir()
+            .expect("Could not find home directory")
+            .join(".nvm")
+    }
+}
+
 pub fn get_nvm_node_paths() -> Result<(String, String), String> {
     if is_test_mode() {
-        println!("Using test mock path");
+        debug!("Using test mock path");
         return Ok(("/test/node".to_string(), "/test/npx".to_string()));
     }
 
-    println!("Using real implementation path");
+    debug!("Using real implementation path");
     let shell_command = r#"
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
@@ -59,9 +73,13 @@ pub fn get_nvm_node_paths() -> Result<(String, String), String> {
         .arg("-c")
         .arg(shell_command)
         .output()
-        .map_err(|e| format!("Failed to get node paths: {}", e))?;
+        .map_err(|e| {
+            error!("Failed to get node paths: {}", e);
+            format!("Failed to get node paths: {}", e)
+        })?;
 
     if !output.status.success() {
+        error!("Failed to get node and npx paths");
         return Err("Failed to get node and npx paths".to_string());
     }
 
@@ -70,20 +88,29 @@ pub fn get_nvm_node_paths() -> Result<(String, String), String> {
 
     let node_path = lines
         .next()
-        .ok_or("Failed to get node path")?
+        .ok_or_else(|| {
+            error!("Failed to get node path");
+            "Failed to get node path".to_string()
+        })?
         .trim()
         .to_string();
 
     let npx_path = lines
         .next()
-        .ok_or("Failed to get npx path")?
+        .ok_or_else(|| {
+            error!("Failed to get npx path");
+            "Failed to get npx path".to_string()
+        })?
         .trim()
         .to_string();
 
     if !node_path.contains(".nvm/versions/node") {
+        error!("Node path is not from nvm installation");
         return Err("Node path is not from nvm installation".to_string());
     }
 
+    debug!("Found node path: {}", node_path);
+    debug!("Found npx path: {}", npx_path);
     Ok((node_path, npx_path))
 }
 
@@ -169,38 +196,28 @@ fn check_node_version() -> Result<String, String> {
     }
 }
 
-fn install_node() -> Result<(), String> {
-    println!("Installing Node.js v20.9.0...");
-
-    let nvm_path_output = Command::new("which")
-        .arg("nvm")
-        .output()
-        .map_err(|e| format!("Failed to get nvm path: {}", e))?;
-
-    if !nvm_path_output.status.success() {
-        return Err("nvm not found in PATH".to_string());
+pub async fn ensure_node() -> Result<(), String> {
+    info!("Installing Node.js v20.9.0...");
+    if !check_nvm_installed() {
+        install_nvm()?;
     }
 
-    let nvm_path = String::from_utf8_lossy(&nvm_path_output.stdout)
-        .trim()
-        .to_string();
-
-    let output = Command::new(nvm_path)
-        .arg("install")
-        .arg("v20.9.0")
-        .output()
-        .map_err(|e| format!("Failed to run node installation: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Node installation failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
+    match check_node_version() {
+        Ok(version) => {
+            if version != "v20.9.0" {
+                install_node()?;
+            }
+            ensure_npx_shim()?;
+            info!("Node.js v20.9.0 installed successfully");
+            Ok(())
+        }
+        Err(_) => {
+            install_node()?;
+            ensure_npx_shim()?;
+            info!("Node.js v20.9.0 installed successfully");
+            Ok(())
+        }
     }
-
-    NODE_INSTALLED.store(true, Ordering::Relaxed);
-    println!("Node.js v20.9.0 installed successfully");
-    Ok(())
 }
 
 fn check_nvm_installed() -> bool {
@@ -234,15 +251,19 @@ fn check_nvm_installed() -> bool {
 
     if output {
         NVM_INSTALLED.store(true, Ordering::Relaxed);
-        println!("nvm is already installed");
+        info!("nvm is already installed");
     }
 
     output
 }
 
-fn install_nvm() -> Result<(), String> {
-    println!("Installing nvm...");
+pub async fn ensure_nvm() -> Result<(), String> {
+    if Path::new(&get_nvm_dir().join("nvm.sh")).exists() {
+        info!("nvm is already installed");
+        return Ok(());
+    }
 
+    info!("Installing nvm...");
     let shell_command = r#"
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
     "#;
@@ -261,7 +282,7 @@ fn install_nvm() -> Result<(), String> {
     }
 
     NVM_INSTALLED.store(true, Ordering::Relaxed);
-    println!("nvm installed successfully");
+    info!("nvm installed successfully");
     Ok(())
 }
 
@@ -290,15 +311,19 @@ fn check_uv_installed() -> bool {
 
     if version_command {
         UV_INSTALLED.store(true, Ordering::Relaxed);
-        println!("uv is installed");
+        info!("uv is installed");
     }
 
     version_command
 }
 
-fn install_uv() -> Result<(), String> {
-    println!("Installing uv...");
+pub async fn ensure_uv() -> Result<(), String> {
+    if Command::new("uv").arg("--version").output().is_ok() {
+        info!("uv is installed");
+        return Ok(());
+    }
 
+    info!("Installing uv...");
     let shell_command = r#"
         curl -LsSf https://astral.sh/uv/install.sh | sh
     "#;
@@ -317,33 +342,12 @@ fn install_uv() -> Result<(), String> {
     }
 
     UV_INSTALLED.store(true, Ordering::Relaxed);
-    println!("uv installed successfully");
+    info!("uv installed successfully");
     Ok(())
 }
 
-fn ensure_node_environment() -> Result<String, String> {
-    if !check_nvm_installed() {
-        install_nvm()?;
-    }
-
-    match check_node_version() {
-        Ok(version) => {
-            if version != "v20.9.0" {
-                install_node()?;
-            }
-            ensure_npx_shim()?;
-            Ok("Node environment is ready".to_string())
-        }
-        Err(_) => {
-            install_node()?;
-            ensure_npx_shim()?;
-            Ok("Node environment is ready".to_string())
-        }
-    }
-}
-
 #[tauri::command]
-pub fn ensure_environment() -> Result<String, String> {
+pub async fn ensure_environment() -> Result<String, String> {
     if ENVIRONMENT_SETUP_STARTED.swap(true, Ordering::SeqCst) {
         return Ok("Environment setup already in progress".to_string());
     }
@@ -352,8 +356,108 @@ pub fn ensure_environment() -> Result<String, String> {
         if !check_uv_installed() {
             let _ = install_uv();
         }
-        let _ = ensure_node_environment();
+        let _ = ensure_node();
     });
 
     Ok("Environment setup started".to_string())
+}
+
+fn install_node() -> Result<(), String> {
+    info!("Installing Node.js v20.9.0...");
+
+    let nvm_path_output = Command::new("which").arg("nvm").output().map_err(|e| {
+        error!("Failed to get nvm path: {}", e);
+        format!("Failed to get nvm path: {}", e)
+    })?;
+
+    if !nvm_path_output.status.success() {
+        error!("nvm not found in PATH");
+        return Err("nvm not found in PATH".to_string());
+    }
+
+    let nvm_path = String::from_utf8_lossy(&nvm_path_output.stdout)
+        .trim()
+        .to_string();
+
+    let output = Command::new(nvm_path)
+        .arg("install")
+        .arg("v20.9.0")
+        .output()
+        .map_err(|e| {
+            error!("Failed to run node installation: {}", e);
+            format!("Failed to run node installation: {}", e)
+        })?;
+
+    if !output.status.success() {
+        let err_msg = format!(
+            "Node installation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        error!("{}", err_msg);
+        return Err(err_msg);
+    }
+
+    NODE_INSTALLED.store(true, Ordering::Relaxed);
+    info!("Node.js v20.9.0 installed successfully");
+    Ok(())
+}
+
+fn install_nvm() -> Result<(), String> {
+    info!("Installing nvm...");
+
+    let shell_command = r#"
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    "#;
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(shell_command)
+        .output()
+        .map_err(|e| {
+            error!("Failed to run nvm installation: {}", e);
+            format!("Failed to run nvm installation: {}", e)
+        })?;
+
+    if !output.status.success() {
+        let err_msg = format!(
+            "nvm installation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        error!("{}", err_msg);
+        return Err(err_msg);
+    }
+
+    NVM_INSTALLED.store(true, Ordering::Relaxed);
+    info!("nvm installed successfully");
+    Ok(())
+}
+
+fn install_uv() -> Result<(), String> {
+    info!("Installing uv...");
+
+    let shell_command = r#"
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+    "#;
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(shell_command)
+        .output()
+        .map_err(|e| {
+            error!("Failed to run uv installation: {}", e);
+            format!("Failed to run uv installation: {}", e)
+        })?;
+
+    if !output.status.success() {
+        let err_msg = format!(
+            "uv installation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        error!("{}", err_msg);
+        return Err(err_msg);
+    }
+
+    UV_INSTALLED.store(true, Ordering::Relaxed);
+    info!("uv installed successfully");
+    Ok(())
 }
