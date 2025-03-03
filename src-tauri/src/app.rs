@@ -12,6 +12,7 @@ use std::sync::Mutex;
 lazy_static! {
     static ref CONFIG_CACHE: Mutex<Option<Value>> = Mutex::new(None);
     static ref TEST_CONFIG_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
+    static ref EMPTY_MAP: serde_json::Map<String, Value> = serde_json::Map::new();
 }
 
 // Function to set a test config path - only used in tests
@@ -143,15 +144,21 @@ pub fn get_config() -> Result<Value, String> {
 pub fn save_config(config: &Value) -> Result<(), String> {
     let config_path = get_config_path()?;
 
+    // Ensure parent directory exists
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+
     let updated_config = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
     fs::write(&config_path, updated_config)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
 
-    // Update cache
+    // Clear the cache to ensure next read gets fresh data
     let mut cache = CONFIG_CACHE.lock().unwrap();
-    *cache = Some(config.clone());
+    *cache = None;
 
     Ok(())
 }
@@ -177,38 +184,42 @@ pub async fn install(app_name: String) -> Result<(), String> {
     let configs = get_app_configs();
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == &app_name) {
         let mut config_json = get_config()?;
-        let mcp_key = config.mcp_key.clone();
+
+        // Ensure mcpServers exists and is an object
+        if !config_json.get("mcpServers").map_or(false, |v| v.is_object()) {
+            config_json["mcpServers"] = json!({});
+        }
+
+        // Create the app config object
+        let app_config = json!({
+            "command": config.command,
+            "args": config.args
+        });
+
+        // Update the config with the app config object
+        if let Some(mcp_servers) = config_json["mcpServers"].as_object_mut() {
+            mcp_servers.insert(config.mcp_key.clone(), app_config);
+        }
+
+        // Save the updated config
+        save_config(&config_json)?;
+
+        // Clear the cache to ensure next read gets fresh data
+        let mut cache = CONFIG_CACHE.lock().unwrap();
+        *cache = None;
+
+        // Preload dependencies if needed
         let command = config.command.clone();
         let args = config.args.clone();
-
-        if let Some(mcp_servers) = config_json
-            .get_mut("mcpServers")
-            .and_then(|v| v.as_object_mut())
-        {
-            mcp_servers.insert(
-                mcp_key.clone(),
-                json!({
-                    "command": command,
-                    "args": args.clone(),
-                }),
-            );
-
-            save_config(&config_json)?;
-
-            std::thread::spawn(move || {
-                if command.contains("npx") && args.len() > 1 {
-                    let package = &args[1];
-                    let _ = Command::new("npm").args(["cache", "add", package]).output();
-                }
-            });
-
-            Ok(())
-        } else {
-            Err("Failed to find mcpServers in config".to_string())
-        }
-    } else {
-        Ok(())
+        std::thread::spawn(move || {
+            if command.contains("npx") && args.len() > 1 {
+                let package = &args[1];
+                let _ = Command::new("npm").args(["cache", "add", package]).output();
+            }
+        });
     }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -218,22 +229,17 @@ pub async fn uninstall(app_name: String) -> Result<(), String> {
     if let Some((_, config)) = get_app_configs().iter().find(|(name, _)| name == &app_name) {
         let mut config_json = get_config()?;
 
-        if let Some(mcp_servers) = config_json
-            .get_mut("mcpServers")
-            .and_then(|v| v.as_object_mut())
-        {
-            if mcp_servers.remove(&config.mcp_key).is_some() {
-                save_config(&config_json)?;
-                Ok(())
-            } else {
-                Ok(())
-            }
-        } else {
-            Err("Failed to find mcpServers in config".to_string())
+        if let Some(mcp_servers) = config_json.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+            mcp_servers.remove(&config.mcp_key);
+            save_config(&config_json)?;
         }
-    } else {
-        Ok(())
+
+        // Clear the cache to ensure next read gets fresh data
+        let mut cache = CONFIG_CACHE.lock().unwrap();
+        *cache = None;
     }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -256,17 +262,23 @@ pub fn is_installed(app_name: &str) -> Result<bool, String> {
 #[tauri::command]
 pub fn get_app_statuses() -> Result<Value, String> {
     let config_json = get_config()?;
-
     let mut installed_apps = json!({});
     let mut configured_apps = json!({});
 
     let app_configs = get_app_configs();
 
-    if let Some(mcp_servers) = config_json.get("mcpServers").and_then(|v| v.as_object()) {
-        for (app_name, config) in app_configs {
-            installed_apps[&app_name] = json!(mcp_servers.contains_key(&config.mcp_key));
-            configured_apps[&app_name] = json!(!config.command.is_empty());
-        }
+    // Get mcpServers or use empty object if not found
+    let mcp_servers = config_json.get("mcpServers")
+        .and_then(|v| v.as_object())
+        .unwrap_or_else(|| {
+            error!("mcpServers not found or not an object");
+            &EMPTY_MAP
+        });
+
+    for (app_name, config) in app_configs {
+        let is_installed = mcp_servers.contains_key(&config.mcp_key);
+        installed_apps[&app_name] = json!(is_installed);
+        configured_apps[&app_name] = json!(!config.command.is_empty());
     }
 
     Ok(json!({
