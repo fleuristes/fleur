@@ -1,7 +1,7 @@
 use log::info;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::path::PathBuf;
 
 struct EnvironmentState {
     uv_installed: AtomicBool,
@@ -69,13 +69,16 @@ pub fn get_nvm_node_paths() -> Result<(String, String), String> {
         return Ok(("/test/node".to_string(), "/test/npx".to_string()));
     }
 
-    let shell_command = format!(r#"
+    let shell_command = format!(
+        r#"
         export NVM_DIR="$HOME/.nvm"
         [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
         nvm use {} > /dev/null 2>&1
         which node
         which npx
-    "#, NODE_VERSION);
+    "#,
+        NODE_VERSION
+    );
 
     let output = Command::new("bash")
         .arg("-c")

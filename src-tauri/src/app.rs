@@ -1,14 +1,16 @@
-use crate::environment::{ensure_npx_shim, get_uvx_path, ensure_node_environment, ensure_uv_environment};
+use crate::environment::{
+    ensure_node_environment, ensure_npx_shim, ensure_uv_environment, get_uvx_path,
+};
 use crate::file_utils::{ensure_config_file, ensure_mcp_servers};
 use dirs;
 use lazy_static::lazy_static;
-use log::{info, error};
+use log::{error, info};
+use reqwest::blocking::get;
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
-use reqwest::blocking::get;
 use std::time::Duration;
 
 lazy_static! {
@@ -50,11 +52,9 @@ fn ensure_runtime_paths() -> Result<(String, String), String> {
 
     ensure_node_environment().map_err(|e| format!("Failed to set up Node environment: {}", e))?;
 
-    let npx_shim = ensure_npx_shim()
-        .map_err(|e| format!("Failed to ensure NPX shim: {}", e))?;
+    let npx_shim = ensure_npx_shim().map_err(|e| format!("Failed to ensure NPX shim: {}", e))?;
 
-    let uvx_path = get_uvx_path()
-        .map_err(|e| format!("Failed to get UVX path: {}", e))?;
+    let uvx_path = get_uvx_path().map_err(|e| format!("Failed to get UVX path: {}", e))?;
 
     Ok((npx_shim, uvx_path))
 }
@@ -65,9 +65,9 @@ fn fetch_app_registry() -> Result<Value, String> {
         return Ok(registry.clone());
     }
 
-    let registry_url = "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/apps.json";
-    let response = get(registry_url)
-        .map_err(|e| format!("Failed to fetch app registry: {}", e))?;
+    let registry_url =
+        "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/apps.json";
+    let response = get(registry_url).map_err(|e| format!("Failed to fetch app registry: {}", e))?;
 
     let registry_json: Value = response
         .json()
@@ -86,10 +86,16 @@ pub fn get_app_configs() -> Result<Vec<(String, AppConfig)>, String> {
     let mut configs = Vec::new();
 
     for app in apps {
-        let name = app["name"].as_str().ok_or("App name is missing")?.to_string();
+        let name = app["name"]
+            .as_str()
+            .ok_or("App name is missing")?
+            .to_string();
         let config = app["config"].as_object().ok_or("App config is missing")?;
 
-        let mcp_key = config["mcpKey"].as_str().ok_or("mcpKey is missing")?.to_string();
+        let mcp_key = config["mcpKey"]
+            .as_str()
+            .ok_or("mcpKey is missing")?
+            .to_string();
         let runtime = config["runtime"].as_str().ok_or("runtime is missing")?;
 
         let command = match runtime {
@@ -271,8 +277,14 @@ pub fn save_app_env(app_name: &str, env_values: serde_json::Value) -> Result<Str
         let mut config_json = get_config()?;
         let mcp_key = config.mcp_key.clone();
 
-        if let Some(mcp_servers) = config_json.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
-            if let Some(server_config) = mcp_servers.get_mut(&mcp_key).and_then(|v| v.as_object_mut()) {
+        if let Some(mcp_servers) = config_json
+            .get_mut("mcpServers")
+            .and_then(|v| v.as_object_mut())
+        {
+            if let Some(server_config) = mcp_servers
+                .get_mut(&mcp_key)
+                .and_then(|v| v.as_object_mut())
+            {
                 if !server_config.contains_key("env") {
                     server_config.insert("env".to_string(), json!({}));
                 }
