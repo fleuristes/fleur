@@ -1,4 +1,4 @@
-use crate::environment::{ensure_npx_shim, get_uvx_path};
+use crate::environment::{ensure_npx_shim, get_uvx_path, ensure_node_environment, ensure_uv_environment};
 use crate::file_utils::{ensure_config_file, ensure_mcp_servers};
 use dirs;
 use lazy_static::lazy_static;
@@ -17,25 +17,20 @@ lazy_static! {
     pub static ref APP_REGISTRY_CACHE: Mutex<Option<Value>> = Mutex::new(None);
 }
 
-// Function to set a test config path - only used in tests
 pub fn set_test_config_path(path: Option<PathBuf>) {
     let mut test_path = TEST_CONFIG_PATH.lock().unwrap();
     *test_path = path;
 
-    // Clear the cache when changing the config path
     let mut cache = CONFIG_CACHE.lock().unwrap();
     *cache = None;
 }
 
-// Function to get the config path - uses test path if set
 fn get_config_path() -> Result<PathBuf, String> {
-    // Check if we have a test config path set
     let test_path = TEST_CONFIG_PATH.lock().unwrap();
     if let Some(path) = test_path.clone() {
         return Ok(path);
     }
 
-    // Otherwise use the default path
     let default_path = dirs::home_dir()
         .ok_or("Could not find home directory".to_string())?
         .join("Library/Application Support/Claude/claude_desktop_config.json");
@@ -50,55 +45,65 @@ pub struct AppConfig {
     pub args: Vec<String>,
 }
 
+fn ensure_runtime_paths() -> Result<(String, String), String> {
+    ensure_uv_environment().map_err(|e| format!("Failed to set up UV environment: {}", e))?;
+
+    ensure_node_environment().map_err(|e| format!("Failed to set up Node environment: {}", e))?;
+
+    let npx_shim = ensure_npx_shim()
+        .map_err(|e| format!("Failed to ensure NPX shim: {}", e))?;
+
+    let uvx_path = get_uvx_path()
+        .map_err(|e| format!("Failed to get UVX path: {}", e))?;
+
+    Ok((npx_shim, uvx_path))
+}
+
 fn fetch_app_registry() -> Result<Value, String> {
-    // Check if we have a cached registry
     let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
     if let Some(ref registry) = *cache {
         return Ok(registry.clone());
     }
 
-    // Fetch the registry from GitHub
     let registry_url = "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/apps.json";
     let response = get(registry_url)
         .map_err(|e| format!("Failed to fetch app registry: {}", e))?;
-    
+
     let registry_json: Value = response
         .json()
         .map_err(|e| format!("Failed to parse app registry JSON: {}", e))?;
-    
-    // Cache the registry
+
     *cache = Some(registry_json.clone());
     Ok(registry_json)
 }
 
 pub fn get_app_configs() -> Result<Vec<(String, AppConfig)>, String> {
-    let npx_shim = ensure_npx_shim().unwrap_or_else(|_| "npx".to_string());
-    let uvx_path = get_uvx_path().unwrap_or_else(|_| "uvx".to_string());
-    
+    let (npx_shim, uvx_path) = ensure_runtime_paths()?;
+
     let registry = fetch_app_registry()?;
     let apps = registry.as_array().ok_or("App registry is not an array")?;
-    
+
     let mut configs = Vec::new();
-    
+
     for app in apps {
         let name = app["name"].as_str().ok_or("App name is missing")?.to_string();
         let config = app["config"].as_object().ok_or("App config is missing")?;
-        
+
         let mcp_key = config["mcpKey"].as_str().ok_or("mcpKey is missing")?.to_string();
         let runtime = config["runtime"].as_str().ok_or("runtime is missing")?;
-        
+
         let command = match runtime {
             "npx" => npx_shim.clone(),
             "uvx" => uvx_path.clone(),
             _ => runtime.to_string(),
         };
-        
+
         let args_value = config["args"].as_array().ok_or("args is missing")?;
         let args: Vec<String> = args_value
             .iter()
             .map(|arg| arg.as_str().unwrap_or("").to_string())
             .collect();
-        
+
         configs.push((
             name,
             AppConfig {
@@ -108,7 +113,7 @@ pub fn get_app_configs() -> Result<Vec<(String, AppConfig)>, String> {
             },
         ));
     }
-    
+
     Ok(configs)
 }
 
@@ -169,6 +174,8 @@ pub fn preload_dependencies() -> Result<(), String> {
 #[tauri::command]
 pub fn install(app_name: &str, env_vars: Option<serde_json::Value>) -> Result<String, String> {
     info!("Installing app: {}", app_name);
+
+    ensure_runtime_paths()?;
 
     let configs = get_app_configs()?;
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
@@ -257,7 +264,7 @@ pub fn is_installed(app_name: &str) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn save_app_env(app_name: &str, env_values: serde_json::Value) -> Result<String, String> {
-    println!("Saving ENV values for app: {}", app_name);
+    info!("Saving ENV values for app: {}", app_name);
 
     let configs = get_app_configs()?;
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
@@ -266,18 +273,16 @@ pub fn save_app_env(app_name: &str, env_values: serde_json::Value) -> Result<Str
 
         if let Some(mcp_servers) = config_json.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
             if let Some(server_config) = mcp_servers.get_mut(&mcp_key).and_then(|v| v.as_object_mut()) {
-                // Create ENV object if it doesn't exist
                 if !server_config.contains_key("env") {
                     server_config.insert("env".to_string(), json!({}));
                 }
 
-                // Add or update all key-value pairs in ENV
                 if let Some(env) = server_config.get_mut("env").and_then(|v| v.as_object_mut()) {
                     if let Some(values) = env_values.as_object() {
                         for (key, value) in values {
                             env.insert(key.clone(), value.clone());
                         }
-                        
+
                         save_config(&config_json)?;
                         return Ok(format!("Saved ENV values for app '{}'", app_name));
                     }
@@ -295,7 +300,7 @@ pub fn save_app_env(app_name: &str, env_values: serde_json::Value) -> Result<Str
 
 #[tauri::command]
 pub fn get_app_env(app_name: &str) -> Result<Value, String> {
-    println!("Getting ENV values for app: {}", app_name);
+    info!("Getting ENV values for app: {}", app_name);
 
     let configs = get_app_configs()?;
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
@@ -340,13 +345,12 @@ pub fn get_app_statuses() -> Result<Value, String> {
     }))
 }
 
-// New function to expose the app registry to the frontend
 #[tauri::command]
 pub fn get_app_registry() -> Result<Value, String> {
     info!("Fetching app registry...");
     let result = fetch_app_registry();
     match &result {
-        Ok(value) => info!("Successfully fetched app registry: {}", value),
+        Ok(value) => info!("Successfully fetched app registry"),
         Err(e) => error!("Failed to fetch app registry: {}", e),
     }
     result
