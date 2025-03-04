@@ -41,9 +41,12 @@ function Index() {
       if (hasInitializedInstalledApps) return;
 
       try {
-        await invoke("ensure_environment");
-        await loadAppStatuses();
-        await loadApps();
+        if (!hasInitializedInstalledApps) {
+          await invoke("ensure_environment");
+        }
+
+        await Promise.all([loadAppStatuses(), loadApps()]);
+
         appStore.setState((state) => ({
           ...state,
           hasInitializedInstalledApps: true,

@@ -121,7 +121,11 @@ pub fn get_nvm_node_paths() -> Result<(String, String), String> {
 }
 
 fn check_uv_installed() -> bool {
-    if is_test_mode() || ENV_STATE.uv_installed.load(Ordering::Relaxed) {
+    if is_test_mode() {
+        return true;
+    }
+
+    if ENV_STATE.uv_installed.load(Ordering::Relaxed) {
         return true;
     }
 
@@ -148,6 +152,10 @@ fn check_uv_installed() -> bool {
 }
 
 fn install_uv() -> Result<(), String> {
+    if check_uv_installed() {
+        return Ok(());
+    }
+
     info!("Installing uv...");
 
     let shell_command = r#"
@@ -181,7 +189,11 @@ pub fn ensure_uv_environment() -> Result<String, String> {
 }
 
 fn check_nvm_installed() -> bool {
-    if is_test_mode() || ENV_STATE.nvm_installed.load(Ordering::Relaxed) {
+    if is_test_mode() {
+        return true;
+    }
+
+    if ENV_STATE.nvm_installed.load(Ordering::Relaxed) {
         return true;
     }
 
@@ -279,22 +291,36 @@ fn check_node_version() -> Result<String, String> {
 fn install_node() -> Result<(), String> {
     info!("Installing Node.js {}...", NODE_VERSION);
 
-    let nvm_path_output = Command::new("which")
-        .arg("nvm")
+    // First ensure nvm is sourced
+    let nvm_source = format!(
+        r#"
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        which nvm
+    "#
+    );
+
+    let nvm_path_output = Command::new("bash")
+        .arg("-c")
+        .arg(&nvm_source)
         .output()
-        .map_err(|e| format!("Failed to get nvm path: {}", e))?;
+        .map_err(|e| format!("Failed to source nvm: {}", e))?;
 
     if !nvm_path_output.status.success() {
-        return Err("nvm not found in PATH".to_string());
+        return Err("Failed to source nvm".to_string());
     }
 
     let nvm_path = String::from_utf8_lossy(&nvm_path_output.stdout)
         .trim()
         .to_string();
 
-    let output = Command::new(nvm_path)
-        .arg("install")
-        .arg(NODE_VERSION)
+    if nvm_path.is_empty() {
+        return Err("nvm not found after sourcing".to_string());
+    }
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(format!("{} install {}", nvm_source, NODE_VERSION))
         .output()
         .map_err(|e| format!("Failed to run node installation: {}", e))?;
 
@@ -380,6 +406,11 @@ pub fn ensure_environment() -> Result<String, String> {
     if ENV_STATE.setup_started.swap(true, Ordering::SeqCst) {
         return Ok("Environment setup already in progress".to_string());
     }
+
+    // Reset state flags
+    ENV_STATE.uv_installed.store(false, Ordering::Relaxed);
+    ENV_STATE.nvm_installed.store(false, Ordering::Relaxed);
+    ENV_STATE.node_installed.store(false, Ordering::Relaxed);
 
     std::thread::spawn(|| {
         if let Err(err) = ensure_uv_environment() {

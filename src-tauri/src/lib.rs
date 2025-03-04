@@ -67,11 +67,6 @@ pub fn run() {
         eprintln!("Failed to initialize logger: {}", e);
     }
 
-    // Preload dependencies in background
-    std::thread::spawn(|| {
-        let _ = app::preload_dependencies();
-    });
-
     tauri::Builder::default()
         .plugin(UpdaterBuilder::new().build())
         .plugin(tauri_plugin_opener::init())
