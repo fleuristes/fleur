@@ -1,26 +1,148 @@
 mod common;
 
 use common::{setup_test_config, setup_test_environment};
-use fleur_lib::app::{self, get_app_configs, set_test_config_path};
-use serde_json::Value;
+use fleur_lib::app::{self, get_app_configs, set_test_config_path, APP_REGISTRY_CACHE};
+use serde_json::{json, Value};
 use serial_test::serial;
-use std::{thread, time::Duration};
+use std::{fs, thread, time::Duration};
 use tempfile;
-use uuid::Uuid;
+
+fn setup_mock_registry() -> Value {
+    // Create the stubbed app registry for tests
+    let stubbed_registry = json!([{
+        "name": "Browser",
+        "description": "This is a browser app that allows Claude to navigate to any website, take screenshots, and interact with the page.",
+        "icon": {
+          "type": "url",
+          "url": {
+            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg",
+            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg"
+          }
+        },
+        "category": "Utilities",
+        "price": "Free",
+        "developer": "Google LLC",
+        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+        "config": {
+          "mcpKey": "puppeteer",
+          "runtime": "npx",
+          "args": [
+            "-y",
+            "@modelcontextprotocol/server-puppeteer",
+            "--debug"
+          ]
+        },
+        "features": [
+          {
+            "name": "Navigate to any website",
+            "description": "Navigate to any URL in the browser",
+            "prompt": "Navigate to the URL google.com and..."
+          },
+          {
+            "name": "Interact with any website - search, click, scroll, screenshot, etc.",
+            "description": "Click elements on the page",
+            "prompt": "Go to google.com and search for..."
+          }
+        ],
+        "setup": []
+    },
+    {
+        "name": "Time",
+        "description": "Get and convert time from different timezones",
+        "icon": {
+          "type": "url",
+          "url": {
+            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/time.svg",
+            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/time.svg"
+          }
+        },
+        "category": "Utilities",
+        "price": "Free",
+        "developer": "Anthropic",
+        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/time",
+        "config": {
+          "mcpKey": "time",
+          "runtime": "npx",
+          "args": [
+            "-y",
+            "mcp-server-time",
+            "--debug"
+          ]
+        },
+        "features": [
+          {
+            "name": "Get current time in a timezone",
+            "description": "Get the current time in a specific timezone",
+            "prompt": "What time is it in Tokyo?"
+          },
+          {
+            "name": "Convert time between timezones",
+            "description": "Convert a time from one timezone to another",
+            "prompt": "Convert 3PM PST to JST"
+          }
+        ],
+        "setup": []
+    }]);
+
+    // Set the stubbed registry in the cache
+    {
+        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
+        *cache = Some(stubbed_registry.clone());
+    }
+
+    stubbed_registry
+}
+
+fn teardown_mock_registry() {
+    // Reset the cache after test
+    let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
+    *cache = None;
+}
 
 #[test]
+#[serial]
 fn test_get_app_configs() {
     let _temp_dir = setup_test_environment();
-    let (_config_path, _temp_dir) = setup_test_config();
-    set_test_config_path(Some(_config_path.clone()));
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
 
+    let mock_registry = setup_mock_registry();
+
+    // Test getting app configs
     let configs = get_app_configs().expect("Failed to get app configs");
+
+    // Verify we got the expected number of apps
+    assert_eq!(
+        configs.len(),
+        mock_registry.as_array().unwrap().len(),
+        "Expected the same number of apps as in the mock registry"
+    );
+
+    // Check Browser app
     let browser = configs
         .iter()
         .find(|(name, _)| name == "Browser")
         .expect("Browser app not found");
     assert_eq!(browser.1.mcp_key, "puppeteer");
+    assert!(
+        browser.1.command.contains("npx"),
+        "Expected command to contain 'npx'"
+    );
+    assert_eq!(
+        browser.1.args.len(),
+        3,
+        "Expected 3 arguments for Browser app"
+    );
 
+    // Check Time app
+    let time_app = configs
+        .iter()
+        .find(|(name, _)| name == "Time")
+        .expect("Time app not found");
+    assert_eq!(time_app.1.mcp_key, "time");
+    assert_eq!(time_app.1.args[1], "mcp-server-time");
+
+    teardown_mock_registry();
     set_test_config_path(None);
 }
 
@@ -28,86 +150,86 @@ fn test_get_app_configs() {
 #[serial]
 fn test_install() {
     let _temp_dir = setup_test_environment();
-    let (_config_path, _temp_dir) = setup_test_config();
-    set_test_config_path(Some(_config_path.clone()));
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
 
-    // Set up the stubbed registry
-    use fleur_lib::app::{self, APP_REGISTRY_CACHE};
-    use serde_json::json;
-
-    let stubbed_registry = json!([{
-        "name": "Browser",
-        "description": "This is a browser app that allows Claude to navigate to any website, take screenshots, and interact with the page.",
-        "icon": {
-          "type": "url",
-          "url": {
-            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg",
-            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg"
-          }
-        },
-        "category": "Utilities",
-        "price": "Free",
-        "developer": "Google LLC",
-        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
-        "config": {
-          "mcpKey": "puppeteer",
-          "runtime": "npx",
-          "args": [
-            "-y",
-            "@modelcontextprotocol/server-puppeteer",
-            "--debug"
-          ]
-        },
-        "features": [
-          {
-            "name": "Navigate to any website",
-            "description": "Navigate to any URL in the browser",
-            "prompt": "Navigate to the URL google.com and..."
-          },
-          {
-            "name": "Interact with any website - search, click, scroll, screenshot, etc.",
-            "description": "Click elements on the page",
-            "prompt": "Go to google.com and search for..."
-          }
-        ],
-        "setup": []
-    }]);
-
-    // Set the stubbed registry in the cache
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = Some(stubbed_registry);
-    }
+    setup_mock_registry();
 
     // Install the app
     let result = app::install("Browser", None);
-    if let Err(e) = &result {
-        println!("Installation failed with error: {}", e);
-    }
-    assert!(result.is_ok());
+    assert!(
+        result.is_ok(),
+        "Installation failed with error: {:?}",
+        result.err()
+    );
 
-    // Wait and verify config file
+    // Wait a bit for file system operations to complete
     thread::sleep(Duration::from_millis(100));
 
-    // Read directly from the file to verify it was updated
-    let config_str = std::fs::read_to_string(&_config_path).unwrap();
-    println!("Config file contents: {}", config_str);
-    let config: Value = serde_json::from_str(&config_str).unwrap();
+    // Read the config file directly to verify it was updated correctly
+    let config_str =
+        fs::read_to_string(&config_path).expect("Failed to read config file after installation");
+    let config: Value =
+        serde_json::from_str(&config_str).expect("Failed to parse config JSON after installation");
 
     // Check if puppeteer key exists and has expected values
     let puppeteer = &config["mcpServers"]["puppeteer"];
-    println!("Puppeteer config: {:?}", puppeteer);
     assert!(
         puppeteer.is_object(),
         "Puppeteer config should be an object"
     );
 
-    // Reset the cache for other tests
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = None;
-    }
+    // Verify command and args
+    assert_eq!(
+        puppeteer["command"].as_str().unwrap_or(""),
+        config["mcpServers"]["puppeteer"]["command"]
+            .as_str()
+            .unwrap_or(""),
+        "Command doesn't match expected value"
+    );
 
+    let args = puppeteer["args"]
+        .as_array()
+        .expect("Args should be an array");
+    assert_eq!(args.len(), 3, "Expected 3 arguments");
+    assert_eq!(args[0].as_str().unwrap_or(""), "-y");
+    assert_eq!(
+        args[1].as_str().unwrap_or(""),
+        "@modelcontextprotocol/server-puppeteer"
+    );
+    assert_eq!(args[2].as_str().unwrap_or(""), "--debug");
+
+    // Test installing with environment variables
+    let env_vars = json!({
+        "API_KEY": "test-key",
+        "DEBUG": "true"
+    });
+
+    let result = app::install("Time", Some(env_vars.clone()));
+    assert!(
+        result.is_ok(),
+        "Installation with env vars failed: {:?}",
+        result.err()
+    );
+
+    thread::sleep(Duration::from_millis(100));
+
+    // Read the config file again to verify env vars
+    let config_str = fs::read_to_string(&config_path)
+        .expect("Failed to read config file after second installation");
+    let config: Value = serde_json::from_str(&config_str)
+        .expect("Failed to parse config JSON after second installation");
+
+    // Check if time app has environment variables
+    let time_config = &config["mcpServers"]["time"];
+    assert!(time_config.is_object(), "Time config should be an object");
+    assert_eq!(
+        time_config["env"]["API_KEY"].as_str().unwrap_or(""),
+        "test-key"
+    );
+    assert_eq!(time_config["env"]["DEBUG"].as_str().unwrap_or(""), "true");
+
+    teardown_mock_registry();
     set_test_config_path(None);
 }
 
@@ -115,214 +237,268 @@ fn test_install() {
 #[serial]
 fn test_uninstall() {
     let _temp_dir = setup_test_environment();
-    let (_config_path, _temp_dir) = setup_test_config();
-    set_test_config_path(Some(_config_path.clone()));
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
+
+    setup_mock_registry();
 
     // Create initial config with puppeteer already installed
-    let initial_config = serde_json::json!({
+    let initial_config = json!({
         "mcpServers": {
             "puppeteer": {
                 "command": "npx",
                 "args": ["-y", "@modelcontextprotocol/server-puppeteer", "--debug"]
+            },
+            "time": {
+                "command": "npx",
+                "args": ["-y", "mcp-server-time", "--debug"]
             }
         }
     });
 
-    std::fs::write(
-        &_config_path,
+    fs::write(
+        &config_path,
         serde_json::to_string_pretty(&initial_config).unwrap(),
     )
-    .unwrap();
+    .expect("Failed to write initial config");
 
-    // Uninstall the app
+    // Test uninstalling the Browser app
     let result = app::uninstall("Browser");
-    assert!(result.is_ok());
+    assert!(
+        result.is_ok(),
+        "Failed to uninstall Browser app: {:?}",
+        result.err()
+    );
 
-    // Wait and verify config file
     thread::sleep(Duration::from_millis(100));
 
-    // Verify config was removed
-    let config_str = std::fs::read_to_string(&_config_path).unwrap();
-    let config: Value = serde_json::from_str(&config_str).unwrap();
+    // Verify config was updated correctly
+    let config_str =
+        fs::read_to_string(&config_path).expect("Failed to read config after uninstall");
+    let config: Value =
+        serde_json::from_str(&config_str).expect("Failed to parse config after uninstall");
 
     // Check if puppeteer key was removed
-    let puppeteer = &config["mcpServers"]["puppeteer"];
     assert!(
-        puppeteer.is_null(),
-        "Puppeteer config should be null after uninstall"
+        !config["mcpServers"]
+            .as_object()
+            .unwrap()
+            .contains_key("puppeteer"),
+        "Puppeteer config should be removed after uninstall"
     );
 
+    // Check that time app is still there
+    assert!(
+        config["mcpServers"]
+            .as_object()
+            .unwrap()
+            .contains_key("time"),
+        "Time app should still be present"
+    );
+
+    teardown_mock_registry();
     set_test_config_path(None);
 }
 
 #[test]
 #[serial]
-fn test_app_status() {
+fn test_is_installed() {
     let _temp_dir = setup_test_environment();
-    let (_config_path, _temp_dir) = setup_test_config();
-    set_test_config_path(Some(_config_path.clone()));
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
 
-    // Set up the stubbed registry
-    use fleur_lib::app::{self, APP_REGISTRY_CACHE};
-    use serde_json::json;
+    setup_mock_registry();
 
-    let stubbed_registry = json!([{
-        "name": "Browser",
-        "description": "This is a browser app that allows Claude to navigate to any website, take screenshots, and interact with the page.",
-        "icon": {
-          "type": "url",
-          "url": {
-            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg",
-            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg"
-          }
-        },
-        "category": "Utilities",
-        "price": "Free",
-        "developer": "Google LLC",
-        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
-        "config": {
-          "mcpKey": "puppeteer",
-          "runtime": "npx",
-          "args": [
-            "-y",
-            "@modelcontextprotocol/server-puppeteer",
-            "--debug"
-          ]
-        },
-        "features": [
-          {
-            "name": "Navigate to any website",
-            "description": "Navigate to any URL in the browser",
-            "prompt": "Navigate to the URL google.com and..."
-          },
-          {
-            "name": "Interact with any website - search, click, scroll, screenshot, etc.",
-            "description": "Click elements on the page",
-            "prompt": "Go to google.com and search for..."
-          }
-        ],
-        "setup": []
-    }]);
+    // Check if app is installed before installation
+    let is_installed_before = app::is_installed("Browser").expect("Failed to check installation");
+    assert!(
+        !is_installed_before,
+        "App should not be installed initially"
+    );
 
-    // Set the stubbed registry in the cache
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = Some(stubbed_registry);
-    }
+    // Install the app
+    app::install("Browser", None).expect("Failed to install Browser app");
 
-    // Test initial status
-    let result = app::get_app_statuses().unwrap();
-    assert!(result["installed"].is_object());
-    assert!(result["configured"].is_object());
-
-    // Install and check status
-    app::install("Browser", None).unwrap();
     thread::sleep(Duration::from_millis(100));
 
-    let result = app::get_app_statuses().unwrap();
-    assert!(result["installed"]["Browser"].as_bool().unwrap());
+    // Check if app is installed after installation
+    let is_installed_after = app::is_installed("Browser").expect("Failed to check installation");
+    assert!(
+        is_installed_after,
+        "App should be installed after installation"
+    );
 
-    // Reset the cache for other tests
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = None;
-    }
+    // Uninstall the app
+    app::uninstall("Browser").expect("Failed to uninstall Browser app");
 
+    thread::sleep(Duration::from_millis(100));
+
+    // Check if app is uninstalled
+    let is_installed_final = app::is_installed("Browser").expect("Failed to check installation");
+    assert!(
+        !is_installed_final,
+        "App should not be installed after uninstallation"
+    );
+
+    teardown_mock_registry();
     set_test_config_path(None);
 }
 
 #[test]
 #[serial]
-fn test_stubbed_app_configs() {
+fn test_app_env() {
     let _temp_dir = setup_test_environment();
-    let (_config_path, _temp_dir) = setup_test_config();
-    set_test_config_path(Some(_config_path.clone()));
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
 
-    use fleur_lib::app::{self, APP_REGISTRY_CACHE};
-    use serde_json::json;
+    setup_mock_registry();
 
-    // Create the stubbed app registry
-    let stubbed_registry = json!([{
-        "name": "Browser",
-        "description": "This is a browser app that allows Claude to navigate to any website, take screenshots, and interact with the page.",
-        "icon": {
-          "type": "url",
-          "url": {
-            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg",
-            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg"
-          }
-        },
-        "category": "Utilities",
-        "price": "Free",
-        "developer": "Google LLC",
-        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
-        "config": {
-          "mcpKey": "puppeteer",
-          "runtime": "npx",
-          "args": [
-            "-y",
-            "@modelcontextprotocol/server-puppeteer",
-            "--debug"
-          ]
-        },
-        "features": [
-          {
-            "name": "Navigate to any website",
-            "description": "Navigate to any URL in the browser",
-            "prompt": "Navigate to the URL google.com and..."
-          },
-          {
-            "name": "Interact with any website - search, click, scroll, screenshot, etc.",
-            "description": "Click elements on the page",
-            "prompt": "Go to google.com and search for..."
-          }
-        ],
-        "setup": []
-    }]);
+    // Install app first
+    app::install("Browser", None).expect("Failed to install Browser app");
 
-    // Set the stubbed registry in the cache
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = Some(stubbed_registry);
-    }
+    // Set environment variables
+    let env_values = json!({
+        "API_KEY": "test-key",
+        "DEBUG": "true"
+    });
 
-    // Call get_app_configs and verify the result
-    let configs = app::get_app_configs().expect("Failed to get app configs");
+    let result = app::save_app_env("Browser", env_values.clone());
+    assert!(result.is_ok(), "Failed to save app env: {:?}", result.err());
 
-    // Verify we got exactly one app
-    assert_eq!(configs.len(), 1, "Expected exactly one app in the configs");
+    thread::sleep(Duration::from_millis(100));
 
-    // Verify the app is the Browser app
-    let (name, config) = &configs[0];
-    assert_eq!(name, "Browser", "Expected app name to be 'Browser'");
-    assert_eq!(
-        config.mcp_key, "puppeteer",
-        "Expected mcp_key to be 'puppeteer'"
-    );
+    // Get and verify environment variables
+    let app_env = app::get_app_env("Browser").expect("Failed to get app env");
+    assert_eq!(app_env["API_KEY"].as_str().unwrap_or(""), "test-key");
+    assert_eq!(app_env["DEBUG"].as_str().unwrap_or(""), "true");
 
-    // Verify the command is npx or a path to npx
+    // Update environment variables
+    let updated_env = json!({
+        "API_KEY": "new-key",
+        "LOG_LEVEL": "debug"
+    });
+
+    let result = app::save_app_env("Browser", updated_env.clone());
     assert!(
-        config.command.contains("npx"),
-        "Expected command to contain 'npx'"
+        result.is_ok(),
+        "Failed to update app env: {:?}",
+        result.err()
     );
 
-    // Verify the args
-    assert_eq!(config.args.len(), 3, "Expected 3 arguments");
-    assert_eq!(config.args[0], "-y", "Expected first arg to be '-y'");
+    thread::sleep(Duration::from_millis(100));
+
+    // Get and verify updated environment variables
+    let updated_app_env = app::get_app_env("Browser").expect("Failed to get updated app env");
+    assert_eq!(updated_app_env["API_KEY"].as_str().unwrap_or(""), "new-key");
+    assert_eq!(updated_app_env["DEBUG"].as_str().unwrap_or(""), "true");
+    assert_eq!(updated_app_env["LOG_LEVEL"].as_str().unwrap_or(""), "debug");
+
+    teardown_mock_registry();
+    set_test_config_path(None);
+}
+
+#[test]
+#[serial]
+fn test_app_statuses() {
+    let _temp_dir = setup_test_environment();
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
+
+    setup_mock_registry();
+
+    // Test initial statuses (no apps installed)
+    let statuses = app::get_app_statuses().expect("Failed to get initial app statuses");
+
+    // Verify initial statuses
+    assert!(
+        !statuses["installed"]["Browser"].as_bool().unwrap_or(true),
+        "Browser should not be installed initially"
+    );
+    assert!(
+        !statuses["installed"]["Time"].as_bool().unwrap_or(true),
+        "Time should not be installed initially"
+    );
+
+    assert!(
+        statuses["configured"]["Browser"].as_bool().unwrap_or(false),
+        "Browser should be configured"
+    );
+    assert!(
+        statuses["configured"]["Time"].as_bool().unwrap_or(false),
+        "Time should be configured"
+    );
+
+    // Install an app and check status
+    app::install("Browser", None).expect("Failed to install Browser app");
+
+    thread::sleep(Duration::from_millis(100));
+
+    let statuses_after =
+        app::get_app_statuses().expect("Failed to get app statuses after installation");
+
+    // Verify statuses after installation
+    assert!(
+        statuses_after["installed"]["Browser"]
+            .as_bool()
+            .unwrap_or(false),
+        "Browser should be installed"
+    );
+    assert!(
+        !statuses_after["installed"]["Time"]
+            .as_bool()
+            .unwrap_or(true),
+        "Time should not be installed"
+    );
+
+    teardown_mock_registry();
+    set_test_config_path(None);
+}
+
+#[test]
+#[serial]
+fn test_get_app_registry() {
+    let _temp_dir = setup_test_environment();
+    let (config_path, _temp_dir2) = setup_test_config();
+    set_test_config_path(Some(config_path.clone()));
+
+    setup_mock_registry();
+
+    // Get the app registry
+    let registry = app::get_app_registry().expect("Failed to get app registry");
+
+    // Verify registry contents
+    assert!(registry.is_array(), "Registry should be an array");
     assert_eq!(
-        config.args[1], "@modelcontextprotocol/server-puppeteer",
-        "Expected second arg to be '@modelcontextprotocol/server-puppeteer'"
+        registry.as_array().unwrap().len(),
+        2,
+        "Registry should contain 2 apps"
     );
+
+    // Verify Browser app
+    let browser = registry
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|app| app["name"].as_str().unwrap_or("") == "Browser")
+        .expect("Browser app not found in registry");
+
     assert_eq!(
-        config.args[2], "--debug",
-        "Expected third arg to be '--debug'"
+        browser["config"]["mcpKey"].as_str().unwrap_or(""),
+        "puppeteer"
     );
+    assert_eq!(browser["category"].as_str().unwrap_or(""), "Utilities");
 
-    // Reset the cache for other tests
-    {
-        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
-        *cache = None;
-    }
+    // Verify Time app
+    let time = registry
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|app| app["name"].as_str().unwrap_or("") == "Time")
+        .expect("Time app not found in registry");
 
+    assert_eq!(time["config"]["mcpKey"].as_str().unwrap_or(""), "time");
+    assert_eq!(time["developer"].as_str().unwrap_or(""), "Anthropic");
+
+    teardown_mock_registry();
     set_test_config_path(None);
 }
