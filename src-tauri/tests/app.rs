@@ -33,6 +33,9 @@ fn test_install() {
 
     // Install the app
     let result = app::install("Browser", None);
+    if let Err(e) = &result {
+        println!("Installation failed with error: {}", e);
+    }
     assert!(result.is_ok());
 
     // Wait and verify config file
@@ -40,10 +43,12 @@ fn test_install() {
 
     // Read directly from the file to verify it was updated
     let config_str = std::fs::read_to_string(&_config_path).unwrap();
+    println!("Config file contents: {}", config_str);
     let config: Value = serde_json::from_str(&config_str).unwrap();
 
     // Check if puppeteer key exists and has expected values
     let puppeteer = &config["mcpServers"]["puppeteer"];
+    println!("Puppeteer config: {:?}", puppeteer);
     assert!(
         puppeteer.is_object(),
         "Puppeteer config should be an object"
