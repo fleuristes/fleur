@@ -37,6 +37,14 @@ fn is_test_mode() -> bool {
     unsafe { IS_TEST_MODE }
 }
 
+#[cfg(feature = "test-utils")]
+pub fn reset_environment_state_for_tests() {
+    ENV_STATE.setup_started.store(false, Ordering::SeqCst);
+    ENV_STATE.uv_installed.store(false, Ordering::Relaxed);
+    ENV_STATE.nvm_installed.store(false, Ordering::Relaxed);
+    ENV_STATE.node_installed.store(false, Ordering::Relaxed);
+}
+
 pub fn get_npx_shim_path() -> PathBuf {
     if is_test_mode() {
         return PathBuf::from("/test/.local/share/fleur/bin/npx-fleur");
