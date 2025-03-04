@@ -31,6 +31,54 @@ fn test_install() {
     let (_config_path, _temp_dir) = setup_test_config();
     set_test_config_path(Some(_config_path.clone()));
 
+    // Set up the stubbed registry
+    use fleur_lib::app::{self, APP_REGISTRY_CACHE};
+    use serde_json::json;
+
+    let stubbed_registry = json!([{
+        "name": "Browser",
+        "description": "This is a browser app that allows Claude to navigate to any website, take screenshots, and interact with the page.",
+        "icon": {
+          "type": "url",
+          "url": {
+            "light": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg",
+            "dark": "https://raw.githubusercontent.com/fleuristes/app-registry/refs/heads/main/assets/browser.svg"
+          }
+        },
+        "category": "Utilities",
+        "price": "Free",
+        "developer": "Google LLC",
+        "sourceUrl": "https://github.com/modelcontextprotocol/servers/tree/main/src/puppeteer",
+        "config": {
+          "mcpKey": "puppeteer",
+          "runtime": "npx",
+          "args": [
+            "-y",
+            "@modelcontextprotocol/server-puppeteer",
+            "--debug"
+          ]
+        },
+        "features": [
+          {
+            "name": "Navigate to any website",
+            "description": "Navigate to any URL in the browser",
+            "prompt": "Navigate to the URL google.com and..."
+          },
+          {
+            "name": "Interact with any website - search, click, scroll, screenshot, etc.",
+            "description": "Click elements on the page",
+            "prompt": "Go to google.com and search for..."
+          }
+        ],
+        "setup": []
+    }]);
+
+    // Set the stubbed registry in the cache
+    {
+        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
+        *cache = Some(stubbed_registry);
+    }
+
     // Install the app
     let result = app::install("Browser", None);
     if let Err(e) = &result {
@@ -53,6 +101,12 @@ fn test_install() {
         puppeteer.is_object(),
         "Puppeteer config should be an object"
     );
+
+    // Reset the cache for other tests
+    {
+        let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
+        *cache = None;
+    }
 
     set_test_config_path(None);
 }
