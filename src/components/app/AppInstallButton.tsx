@@ -107,7 +107,6 @@ export function AppInstallButton({
                     {envVar.label}
                   </label>
                   <Input
-                    type="password"
                     placeholder={envVar.description}
                     value={envVars[envVar.name] || ""}
                     onChange={(e) =>

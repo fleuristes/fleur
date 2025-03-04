@@ -1,5 +1,3 @@
-import { Clock, HardDrive } from "lucide-react";
-
 import type { App } from "@/types/components/app";
 
 export const apps: App[] = [
@@ -19,18 +17,6 @@ export const apps: App[] = [
     developer: "Google LLC",
   },
   {
-    name: "Time",
-    description: "Time",
-    stars: 1000,
-    icon: {
-      type: "lucide",
-      icon: Clock,
-    },
-    category: "Utilities",
-    price: "Get",
-    developer: "Model Context Protocol",
-  },
-  {
     name: "Hacker News",
     description: "Hacker News",
     stars: 1000,
@@ -44,6 +30,33 @@ export const apps: App[] = [
     category: "Social",
     price: "Get",
     developer: "Y Combinator",
+  },
+  {
+    name: "June",
+    description: "June",
+    stars: 1000,
+    icon: {
+      type: "url",
+      url: {
+        light: `/servers/june.svg`,
+        dark: `/servers/june.svg`,
+      },
+    },
+    category: "Analytics",
+    price: "Get",
+    developer: "June",
+    envVars: [
+      {
+        name: "JUNE_API_URL",
+        label: "June API URL",
+        description: "June API URL",
+      },
+      {
+        name: "JUNE_API_KEY",
+        label: "June API Key",
+        description: "June API Key",
+      },
+    ],
   },
   {
     name: "Linear",
@@ -92,18 +105,6 @@ export const apps: App[] = [
         light: `/servers/gcal.svg`,
         dark: `/servers/gcal.svg`,
       },
-    },
-    category: "Productivity",
-    price: "Free",
-    developer: "Google LLC",
-  },
-  {
-    name: "Google Drive",
-    description: "Cloud storage and file sharing",
-    stars: 1000,
-    icon: {
-      type: "lucide",
-      icon: HardDrive,
     },
     category: "Productivity",
     price: "Free",

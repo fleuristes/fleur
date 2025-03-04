@@ -65,19 +65,6 @@ pub fn get_app_configs() -> Vec<(String, AppConfig)> {
             },
         ),
         (
-            "Time".to_string(),
-            AppConfig {
-                mcp_key: "time".to_string(),
-                command: uvx_path.clone(),
-                args: vec![
-                    "--from".to_string(),
-                    "git+https://github.com/modelcontextprotocol/servers.git#subdirectory=src/time"
-                        .to_string(),
-                    "mcp-server-time".to_string(),
-                ],
-            },
-        ),
-        (
             "Hacker News".to_string(),
             AppConfig {
                 mcp_key: "hn".to_string(),
@@ -87,6 +74,18 @@ pub fn get_app_configs() -> Vec<(String, AppConfig)> {
                     "git+https://github.com/erithwik/mcp-hn".to_string(),
                     "mcp-hn".to_string(),
                 ],
+            },
+        ),
+        (
+            "June".to_string(),
+            AppConfig {
+                mcp_key: "june".to_string(),
+                command: uvx_path.clone(),
+                args: vec![
+                  "--from".to_string(),
+                  "file:///Users/vinayak/dev/june/june-mcp".to_string(),
+                  "june-mcp".to_string(),
+              ],
             },
         ),
         (
@@ -109,14 +108,6 @@ pub fn get_app_configs() -> Vec<(String, AppConfig)> {
             "Google Calendar".to_string(),
             AppConfig {
                 mcp_key: "calendar".to_string(),
-                command: String::new(),
-                args: vec![],
-            },
-        ),
-        (
-            "Google Drive".to_string(),
-            AppConfig {
-                mcp_key: "drive".to_string(),
                 command: String::new(),
                 args: vec![],
             },
