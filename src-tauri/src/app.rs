@@ -149,9 +149,18 @@ pub fn get_config() -> Result<Value, String> {
 
 pub fn save_config(config: &Value) -> Result<(), String> {
     let config_path = get_config_path()?;
+    info!("Saving config to path: {}", config_path.display());
+
+    // Ensure the config directory exists
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
 
     let updated_config = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    info!("Config contents to write: {}", updated_config);
 
     fs::write(&config_path, updated_config)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
@@ -204,7 +213,13 @@ pub fn install(app_name: &str, env_vars: Option<serde_json::Value>) -> Result<St
                 app_config["env"] = env;
             }
 
+            info!(
+                "Adding app config to mcpServers: {} = {:?}",
+                mcp_key, app_config
+            );
             mcp_servers.insert(mcp_key.clone(), app_config);
+
+            info!("Saving updated config...");
             save_config(&config_json)?;
 
             std::thread::spawn(move || {
