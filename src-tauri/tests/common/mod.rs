@@ -22,6 +22,7 @@ pub fn setup_test_config() -> (PathBuf, TempDir) {
     (config_path, temp_dir)
 }
 
+#[allow(dead_code)]
 pub fn setup_test_environment() -> TempDir {
     // Set up test mode
     fleur_lib::environment::set_test_mode(true);
