@@ -34,9 +34,18 @@ fn test_ensure_uv_environment() {
 #[test]
 fn test_ensure_node_environment() {
     environment::set_test_mode(true);
+
+    // For debugging in CI
     let result = environment::ensure_node_environment();
+
+    if result.as_ref().is_err() {
+        println!("Node environment error: {:?}", result.as_ref().err());
+    }
+
+    // In test mode, this should always succeed
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "Node environment is ready");
+
     environment::set_test_mode(false);
 }
 
@@ -55,6 +64,12 @@ fn test_npx_shim_path() {
 fn test_npx_shim_creation() {
     environment::set_test_mode(true);
     let result = environment::ensure_npx_shim();
+
+    // For debugging in CI
+    if result.as_ref().is_err() {
+        println!("NPX shim creation error: {:?}", result.as_ref().err());
+    }
+
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "/test/.local/share/fleur/bin/npx-fleur");
     environment::set_test_mode(false);
@@ -64,6 +79,11 @@ fn test_npx_shim_creation() {
 fn test_uvx_path() {
     environment::set_test_mode(true);
     let result = environment::get_uvx_path();
+
+    if result.as_ref().is_err() {
+        println!("UVX path error: {:?}", result.as_ref().err());
+    }
+
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "/test/uvx");
     environment::set_test_mode(false);
@@ -73,6 +93,12 @@ fn test_uvx_path() {
 fn test_nvm_node_paths() {
     environment::set_test_mode(true);
     let result = environment::get_nvm_node_paths();
+
+    // For debugging in CI
+    if result.as_ref().is_err() {
+        println!("NVM node paths error: {:?}", result.as_ref().err());
+    }
+
     assert!(result.is_ok());
     let (node_path, npx_path) = result.unwrap();
     assert_eq!(node_path, "/test/node");
