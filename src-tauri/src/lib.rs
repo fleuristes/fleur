@@ -62,10 +62,13 @@ async fn update(app: tauri::AppHandle) -> tauri_plugin_updater::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize logger
     if let Err(e) = setup_logger() {
         eprintln!("Failed to initialize logger: {}", e);
     }
+
+    std::thread::spawn(|| {
+        let _ = app::preload_dependencies();
+    });
 
     tauri::Builder::default()
         .plugin(UpdaterBuilder::new().build())
