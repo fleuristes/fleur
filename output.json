@@ -1,0 +1,37 @@
+{
+  "logFormatVersion": 1,
+  "jobId": "e48c0fb2-c88f-4670-8194-c609fbf05fbc",
+  "status": "Invalid",
+  "statusSummary": "Archive contains critical validation errors",
+  "statusCode": 4000,
+  "archiveFilename": "Fleur_0.1.2_aarch64.dmg",
+  "uploadDate": "2025-03-03T19:55:50.800Z",
+  "sha256": "9d564d82f4e9817b5a69f86552cad9b3acc41f25efb6337740b469193f4fd21b",
+  "ticketContents": null,
+  "issues": [
+    {
+      "severity": "error",
+      "code": null,
+      "path": "Fleur_0.1.2_aarch64.dmg/Fleur.app/Contents/MacOS/fleur",
+      "message": "The signature of the binary is invalid.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087735",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "Fleur_0.1.2_aarch64.dmg/Fleur.app/Contents/MacOS/fleur",
+      "message": "The signature does not include a secure timestamp.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087733",
+      "architecture": "arm64"
+    },
+    {
+      "severity": "error",
+      "code": null,
+      "path": "Fleur_0.1.2_aarch64.dmg/Fleur.app/Contents/MacOS/fleur",
+      "message": "The executable does not have the hardened runtime enabled.",
+      "docUrl": "https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/resolving_common_notarization_issues#3087724",
+      "architecture": "arm64"
+    }
+  ]
+}
