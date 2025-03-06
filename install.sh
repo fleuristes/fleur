@@ -11,9 +11,6 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
-# Version to download
-VERSION="0.1.3"
-
 # Function to print messages with different styling
 print_message() {
     echo -e "${BLUE}${BOLD}🌸 ${1}${RESET}"
@@ -127,11 +124,24 @@ spinner() {
     printf "    \b\b\b\b"
 }
 
+# Function to get the latest release version from GitHub
+get_latest_version() {
+    local latest_version=$(curl -s https://api.github.com/repos/fleuristes/fleur/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if [[ -z "$latest_version" ]]; then
+        print_error "Failed to fetch the latest version from GitHub."
+        exit 1
+    fi
+    echo "$latest_version"
+}
+
 # Main installation process
 main() {
+    # Get the latest version
+    VERSION=$(get_latest_version)
+
     # Display banner
     display_banner
-    print_message "Welcome to the Fleur installer v$VERSION!"
+    print_message "Welcome to the Fleur installer $VERSION!"
     # Trap for cleanup
     trap cleanup EXIT INT TERM
     # System compatibility check
@@ -147,7 +157,7 @@ main() {
     mkdir -p "$BUILD_DIR"
     print_message "Using build directory: ${YELLOW}$BUILD_DIR${RESET}"
     # Download pre-built application
-    APP_URL="https://github.com/fleuristes/fleur/releases/download/v$VERSION/Fleur.app.tar.gz"
+    APP_URL="https://github.com/fleuristes/fleur/releases/download/$VERSION/Fleur.app.tar.gz"
     print_message "Downloading Fleur from: ${YELLOW}$APP_URL${RESET}"
     echo -e "${YELLOW}${BOLD}Downloading...${RESET}"
     download_with_progress "$APP_URL" "$BUILD_DIR/Fleur.app.tar.gz"
