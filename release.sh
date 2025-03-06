@@ -38,7 +38,7 @@ bun run build
 # Build Tauri app
 echo "Building Tauri app..."
 cd src-tauri
-TAURI_SIGNING_PRIVATE_KEY=~/.tauri/fleur.key cargo tauri build --release --target universal-apple-darwin
+TAURI_SIGNING_PRIVATE_KEY=~/.tauri/fleur.key cargo tauri build --target universal-apple-darwin
 
 # Generate latest.json
 echo "Generating latest.json..."
