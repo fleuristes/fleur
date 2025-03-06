@@ -3,12 +3,7 @@ import { useTheme } from "next-themes";
 import { invoke } from "@tauri-apps/api/core";
 import { useStore } from "@tanstack/react-store";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  appStore,
-  loadApps,
-  loadAppStatuses,
-  updateAppInstallation,
-} from "@/store/app";
+import { appStore, loadApps, loadAppStatuses, updateAppInstallation } from "@/store/app";
 import { updateTauriTheme } from "@/lib/update-tauri-theme";
 import { Loader } from "../components/ui/loader";
 import { Home } from "../components/app/home";
@@ -34,39 +29,58 @@ function Index() {
     if (theme === "light" || theme === "dark") {
       updateTauriTheme(theme);
     }
-  }, []);
+  }, [theme]);
 
-  // Log app statuses when they change
+  // Log app statuses when they change, but debounce to avoid spam
   useEffect(() => {
-    if (appStatuses) {
+    if (!appStatuses) return;
+
+    const timer = setTimeout(() => {
       invoke("log_from_frontend", {
         level: "info",
         message: `App statuses: ${JSON.stringify(appStatuses)}`,
       }).catch((error) => {
         console.error("Failed to log app statuses:", error);
       });
-    }
+    }, 500); // Debounce for 500ms
+
+    return () => clearTimeout(timer);
   }, [appStatuses]);
 
+  // Initialize environment only once
   useEffect(() => {
+    let mounted = true;
+
     const initializeEnvironment = async () => {
-      if (hasInitializedInstalledApps) return;
+      if (!mounted || hasInitializedInstalledApps) return;
 
       try {
         await invoke("ensure_environment");
-        await loadAppStatuses();
-        await loadApps();
-        appStore.setState((state) => ({
-          ...state,
-          hasInitializedInstalledApps: true,
-        }));
+
+        // Sequential loading to prevent race conditions
+        if (mounted) {
+          await loadAppStatuses();
+          if (mounted) {
+            await loadApps();
+            if (mounted) {
+              appStore.setState((state) => ({
+                ...state,
+                hasInitializedInstalledApps: true,
+              }));
+            }
+          }
+        }
       } catch (error) {
         console.error("Failed to initialize environment:", error);
       }
     };
 
     initializeEnvironment();
-  }, [hasInitializedInstalledApps]);
+
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty dependency array since we only want this to run once
 
   const handleInstallationChange = (appName: string, isInstalled: boolean) => {
     updateAppInstallation(appName, isInstalled);

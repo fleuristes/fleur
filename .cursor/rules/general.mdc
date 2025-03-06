@@ -1,9 +1,11 @@
 ---
 description: General
 globs: 
+alwaysApply: false
 ---
 Use bun as a package manager - never run npm commands not through it
 
 To run the dev server run `bun tauri dev`
 
 
+Don't add comments to the code you write

@@ -1,6 +1,6 @@
 [package]
 name = "fleur"
-version = "0.1.2"
+version = "0.1.7"
 description = "A GUI to manage your MCPs"
 authors = ["you"]
 edition = "2021"
@@ -41,3 +41,23 @@ test-utils = []
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+# Add configuration for Cargo to optimize compilation
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "unpacked"  # Helps with faster incremental builds on some platforms
+incremental = true
+
+[profile.test]
+opt-level = 0
+debug = true
+incremental = true
+
+[profile.release]
+opt-level = 3
+debug = false
+strip = "symbols"
+lto = "thin"
+incremental = false
+codegen-units = 1  # Enables better optimization, slower compilation

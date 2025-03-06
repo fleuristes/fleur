@@ -1,50 +1,122 @@
-# Tauri + React + Typescript
+<div align="center">
+  <h1>Fleur</h1>
+  <p>A desktop app marketplace for Claude Desktop</p>
+</div>
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+<div align="center">
 
-## Recommended IDE Setup
+[![License](https://img.shields.io/github/license/fleuristes/fleur?style=flat)](https://github.com/fleuristes/fleur/blob/main/LICENSE)
+
+</div>
+
+
+![Fleur Logo](public/hero-asset.png)
+
+Fleur is a desktop application that serves as an app marketplace for MCPs. It allows you to discover, install, and manage apps that extend the functionality of Claude Desktop.
+
+All without having to use a command line. Fleur is made for non-technical users in mind, but is open-source and extensible so developers can make it their own.
+
+## Getting Started
+
+To install Fleur open the terminal and run the following command:
+
+```bash
+curl -fsSL fleur.sh | sh
+```
+
+## Features
+
+- **App Discovery**: Browse and search for apps in the Fleur marketplace
+- **Lightweight and fast**: Fleur is built with Rust and Bun, making it lightweight and fast (it's less than 20MB)
+- **App Installation**: Easily install apps with a single click
+- **App Management**: View installed apps and their status
+- **Automatic Updates**: Stay up-to-date with the latest app versions
+
+
+## Submitting your MCP as an App
+
+To submit your app to the Fleur marketplace, follow these steps:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/fleuristes/app-registry.git
+   cd app-registry
+   ```
+
+2. Add your app to the `apps.json` file.
+
+3. Submit a pull request to the [app-registry repository](https://github.com/fleuristes/app-registry).
+
+
+## Development
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Bun](https://bun.sh/) package manager
+- [Rust](https://www.rust-lang.org/tools/install) (for Tauri)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/fleuristes/fleur.git
+   cd fleur
+   ```
+
+2. Install dependencies:
+   ```bash
+   bun install
+   ```
+
+3. Run the development version:
+   ```bash
+   bun tauri dev
+   ```
+
+### Building for Production
+
+To build the application for production:
+
+```bash
+bun tauri build
+```
+
+## App Registry
+
+Fleur uses a centralized app registry to manage available apps. The registry is maintained at [github.com/fleuristes/app-registry](https://github.com/fleuristes/app-registry).
+
+### Adding a New App
+
+To add a new app to the registry, submit a pull request to the [app-registry repository](https://github.com/fleuristes/app-registry) with your app's metadata.
+
+## Development
+
+### Project Structure
+
+- `src/` - React/TypeScript frontend code
+- `src-tauri/` - Rust backend code
+- `public/` - Static assets
+
+### Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
-
-To install tauri, run:
-
-```bash
-bun install
-```
-
-To run the app, run:
-
-```bash
-bun tauri dev
-```
-
-To run the tests, run:
+### Running Tests
 
 ```bash
 cd src-tauri
 cargo test
 ```
 
-## Updating the App Icon
+## Contributing
 
-To update the application icon, you'll need:
-1. A source image (at least 1024x1024px, PNG format recommended)
-2. ImageMagick installed (`brew install imagemagick`)
+All contributions are welcome!
 
-Then run the icon generation script:
+- `fleur`: The main repository containing the Fleur app. It's built with Tauri, React and Typescript. In the `src-tauri` folder, you'll find the Rust code. And in the `src` folder, you'll find the React code for the UI.
 
-```bash
-# Generate all required icons
-scripts/generate_icons.sh public/logo.png
+- [`app-registry`](https://github.com/fleuristes/app-registry): is the repository that contains the list of all MCPs
 
-# You can pass a different path to the script if you want to use a different image
-```
+## License
 
-The script will automatically:
-- Generate all required icon sizes for macOS, Windows, and Linux
-- Create the .icns file for macOS
-- Create the .ico file for Windows
-- Place all icons in the correct location (src-tauri/icons)
-
-For best results, use a square PNG image with dimensions of at least 1024x1024 pixels.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.

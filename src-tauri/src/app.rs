@@ -1,4 +1,4 @@
-use crate::environment::{ensure_npx_shim, get_uvx_path};
+use crate::environment::{ensure_environment_sync, ensure_npx_shim, get_uvx_path};
 use crate::file_utils::{ensure_config_file, ensure_mcp_servers};
 use dirs;
 use lazy_static::lazy_static;
@@ -9,11 +9,14 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::thread::sleep;
+use std::time::Duration;
 
 lazy_static! {
     static ref CONFIG_CACHE: Mutex<Option<Value>> = Mutex::new(None);
     static ref TEST_CONFIG_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
     pub static ref APP_REGISTRY_CACHE: Mutex<Option<Value>> = Mutex::new(None);
+    static ref ENV_SETUP_COMPLETE: Mutex<bool> = Mutex::new(false);
 }
 
 // Function to set a test config path - only used in tests
@@ -84,11 +87,37 @@ fn fetch_app_registry() -> Result<Value, String> {
     Ok(registry_json)
 }
 
+// Function to ensure environment is set up before getting app configs
+fn ensure_env_setup() -> Result<(), String> {
+    // Skip for test mode
+    if crate::environment::is_test_mode() {
+        return Ok(());
+    }
+
+    // Check if environment setup is already marked as complete
+    let mut setup_complete = ENV_SETUP_COMPLETE.lock().unwrap();
+    if *setup_complete {
+        debug!("Environment already set up");
+        return Ok(());
+    }
+
+    // Ensure environment is set up synchronously
+    info!("Ensuring environment is set up before fetching app configs");
+    ensure_environment_sync()?;
+
+    // Mark setup as complete
+    *setup_complete = true;
+    Ok(())
+}
+
 pub fn get_app_configs() -> Result<Vec<(String, AppConfig)>, String> {
     debug!(
         "Getting app configurations, test_mode: {}",
         crate::environment::is_test_mode()
     );
+
+    // Ensure environment is set up first (skip in test mode)
+    ensure_env_setup()?;
 
     // In test mode, use test paths directly
     let (npx_shim, uvx_path) = if crate::environment::is_test_mode() {
@@ -219,6 +248,30 @@ pub fn save_config(config: &Value) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn restart_claude_app() -> Result<String, String> {
+    info!("Restarting Claude app...");
+
+    // Kill the Claude app
+    Command::new("pkill")
+        .arg("-x")
+        .arg("Claude")
+        .output()
+        .map_err(|e| format!("Failed to kill Claude app: {}", e))?;
+
+    // Wait a moment to ensure it's fully closed
+    sleep(Duration::from_millis(500));
+
+    // Relaunch the app
+    Command::new("open")
+        .arg("-a")
+        .arg("Claude")
+        .output()
+        .map_err(|e| format!("Failed to relaunch Claude app: {}", e))?;
+
+    Ok("Claude app restarted successfully".to_string())
+}
+
+#[tauri::command]
 pub fn preload_dependencies() -> Result<(), String> {
     info!("Preloading dependencies");
     std::thread::spawn(|| {
@@ -240,6 +293,9 @@ pub fn install(app_name: &str, env_vars: Option<serde_json::Value>) -> Result<St
         "Install called in test mode: {}",
         crate::environment::is_test_mode()
     );
+
+    // Ensure environment is set up first
+    ensure_env_setup()?;
 
     let configs = get_app_configs()?;
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
@@ -299,6 +355,7 @@ pub fn install(app_name: &str, env_vars: Option<serde_json::Value>) -> Result<St
             }
 
             info!("Successfully installed app: {}", app_name);
+
             Ok(format!("Added {} configuration for {}", mcp_key, app_name))
         } else {
             let err = "Failed to find mcpServers in config".to_string();
@@ -326,6 +383,7 @@ pub fn uninstall(app_name: &str) -> Result<String, String> {
             if mcp_servers.remove(&config.mcp_key).is_some() {
                 save_config(&config_json)?;
                 info!("Successfully uninstalled app: {}", app_name);
+
                 Ok(format!(
                     "Removed {} configuration for {}",
                     config.mcp_key, app_name
@@ -366,6 +424,9 @@ pub fn is_installed(app_name: &str) -> Result<bool, String> {
 #[tauri::command]
 pub fn save_app_env(app_name: &str, env_values: serde_json::Value) -> Result<String, String> {
     info!("Saving ENV values for app: {}", app_name);
+
+    // Ensure environment is set up first
+    ensure_env_setup()?;
 
     let configs = get_app_configs()?;
     if let Some((_, config)) = configs.iter().find(|(name, _)| name == app_name) {
@@ -439,6 +500,9 @@ pub fn get_app_statuses() -> Result<Value, String> {
         "Getting app statuses, test_mode: {}",
         crate::environment::is_test_mode()
     );
+
+    // Ensure environment is set up before getting statuses
+    ensure_env_setup()?;
 
     let config_json = get_config()?;
     let mut installed_apps = json!({});

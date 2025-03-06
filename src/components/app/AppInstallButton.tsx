@@ -5,13 +5,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { AppInstallButtonProps } from "@/types/components/app";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "../ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogTrigger,
-} from "../ui/dialog";
+import { ConfigurationMenu } from "./configuration";
+import { Dialog, DialogContent, DialogTrigger } from "../ui/dialog";
 
 export function AppInstallButton({
   app,
@@ -71,9 +66,26 @@ export function AppInstallButton({
         appName: app.name,
       });
       onInstallationChange(newIsInstalled);
+
       toast.success(
-        `${app.name} ${!newIsInstalled ? "uninstalled" : "installed"}`
+        `${app.name} ${!newIsInstalled ? "uninstalled" : "installed"}`,
+        {
+          action: {
+            label: "Relaunch Claude",
+            onClick: async () => {
+              try {
+                await invoke("restart_claude_app");
+                toast.success("Claude app is restarting...");
+              } catch (error) {
+                console.error("Failed to restart Claude app:", error);
+                toast.error("Failed to restart Claude app");
+              }
+            },
+          },
+          duration: 10000,
+        }
       );
+
       if (app.setup && app.setup.length > 0 && newIsInstalled) {
         navigate({ to: "/app/$name", params: { name: app.name } });
         return;
@@ -142,53 +154,14 @@ export function AppInstallButton({
             </Button>
           </DialogTrigger>
           <DialogContent>
-            <div className="flex gap-6 h-full">
-              <div className="flex-1">
-                <h2 className="text-lg font-semibold mb-2">
-                  Configure {app.name}
-                </h2>
-                <p className="mb-4 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                  This app requires some setup to use. Please follow the steps
-                  below.
-                </p>
-                <div className="flex flex-col gap-4">
-                  {app.setup.map((setup) =>
-                    setup?.type === "text" ? (
-                      <div key={setup.label} className="flex flex-col gap-2">
-                        <p className="text-base font-medium">{setup.label}</p>
-                        <p className="text-base leading-relaxed text-zinc-600 dark:text-zinc-400">
-                          {setup.value}
-                        </p>
-                      </div>
-                    ) : (
-                      <div
-                        key={setup.label}
-                        className="flex flex-col w-full gap-2">
-                        <p className="text-base font-medium">{setup.label}</p>
-                        <div className="flex gap-2">
-                          <Input
-                            type={"text"}
-                            placeholder={setup.placeholder}
-                            value={setupValues[setup.key || ""] || ""}
-                            onChange={(e) =>
-                              handleInputChange(setup.key || "", e.target.value)
-                            }
-                          />
-                        </div>
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="secondary"
-                onClick={saveAll}
-                disabled={isLoading.all}>
-                {isLoading.all ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
+            <ConfigurationMenu
+              appName={app.name}
+              setup={app.setup}
+              setupValues={setupValues}
+              onInputChange={handleInputChange}
+              onSave={saveAll}
+              isLoading={isLoading.all}
+            />
           </DialogContent>
         </Dialog>
       )}

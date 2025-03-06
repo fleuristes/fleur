@@ -1,4 +1,4 @@
-import { LucideIcon } from "lucide-react";
+import { LucideIcon } from 'lucide-react';
 
 export interface App {
   name: string;
@@ -26,7 +26,7 @@ interface Feature {
   prompt: string;
 }
 
-interface Setup {
+export interface Setup {
   label: string;
   type: "text" | "input";
   placeholder?: string;

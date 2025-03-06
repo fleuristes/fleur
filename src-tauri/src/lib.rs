@@ -68,6 +68,40 @@ fn log_from_frontend(level: String, message: String) {
     }
 }
 
+#[tauri::command]
+fn open_system_url(url: String) -> Result<(), String> {
+    info!("Opening URL with system command: {}", url);
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg(url)
+            .output()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("cmd")
+            .args(["/c", "start", &url])
+            .output()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        Command::new("xdg-open")
+            .arg(url)
+            .output()
+            .map_err(|e| format!("Failed to open URL: {}", e))?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logger
@@ -92,8 +126,10 @@ pub fn run() {
             app::save_app_env,
             app::get_app_env,
             app::get_app_registry,
+            app::restart_claude_app,
             environment::ensure_environment,
             log_from_frontend,
+            open_system_url,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

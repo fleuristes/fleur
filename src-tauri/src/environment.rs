@@ -8,6 +8,7 @@ static UV_INSTALLED: AtomicBool = AtomicBool::new(false);
 static NVM_INSTALLED: AtomicBool = AtomicBool::new(false);
 static NODE_INSTALLED: AtomicBool = AtomicBool::new(false);
 static ENVIRONMENT_SETUP_STARTED: AtomicBool = AtomicBool::new(false);
+static ENVIRONMENT_SETUP_COMPLETED: AtomicBool = AtomicBool::new(false);
 static NODE_VERSION: &str = "v20.9.0";
 static IS_TEST_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -235,22 +236,35 @@ fn check_node_version() -> Result<String, String> {
     }
 
     // If we already confirmed node is installed with correct version, return early
-    if NODE_INSTALLED.load(Ordering::Relaxed) {
+    if NODE_INSTALLED.load(Ordering::SeqCst) {
         debug!("Node.js already confirmed as installed");
         return Ok(NODE_VERSION.to_string());
     }
 
-    // Check if node exists in PATH
-    let which_command = Command::new("which")
-        .arg("node")
-        .output()
-        .map_err(|e| format!("Failed to check node existence: {}", e))?;
+    // Check NVM-installed node first
+    let shell_command = format!(
+        r#"
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        nvm list | grep -w "{}" || true
+    "#,
+        NODE_VERSION
+    );
 
-    if !which_command.status.success() {
-        return Err("Node not found in PATH".to_string());
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg(shell_command)
+        .output()
+        .map_err(|e| format!("Failed to check nvm node version: {}", e))?;
+
+    let output_str = String::from_utf8_lossy(&output.stdout);
+    if output_str.contains(NODE_VERSION) {
+        info!("Node.js {} is already installed via nvm", NODE_VERSION);
+        NODE_INSTALLED.store(true, Ordering::SeqCst);
+        return Ok(NODE_VERSION.to_string());
     }
 
-    // Get node version
+    // If not found in NVM, check system node
     let version_command = Command::new("node")
         .arg("--version")
         .output()
@@ -261,16 +275,17 @@ fn check_node_version() -> Result<String, String> {
             .trim()
             .to_string();
 
-        // Only store as installed if it's the correct version
         if version == NODE_VERSION {
-            info!("Node.js {} is already installed", NODE_VERSION);
-            NODE_INSTALLED.store(true, Ordering::Relaxed);
+            info!("Node.js {} is already installed system-wide", NODE_VERSION);
+            NODE_INSTALLED.store(true, Ordering::SeqCst);
+            return Ok(version);
         }
 
-        Ok(version)
-    } else {
-        Err("Failed to get Node version".to_string())
+        info!("Found Node.js {} but {} is required", version, NODE_VERSION);
+        return Ok(version);
     }
+
+    Err("Node.js not found".to_string())
 }
 
 fn check_nvm_version() -> Result<String, String> {
@@ -572,7 +587,55 @@ fn ensure_node_environment() -> Result<String, String> {
     // Ensure npx shim exists
     ensure_npx_shim()?;
 
+    // Mark environment setup as completed
+    ENVIRONMENT_SETUP_COMPLETED.store(true, Ordering::SeqCst);
+
     Ok("Node environment is ready".to_string())
+}
+
+// New synchronous environment setup function for config.rs to use
+pub fn ensure_environment_sync() -> Result<String, String> {
+    if is_test_mode() {
+        return Ok("Environment setup completed".to_string());
+    }
+
+    // If environment setup is already completed, return early
+    if ENVIRONMENT_SETUP_COMPLETED.load(Ordering::SeqCst) {
+        debug!("Environment setup already completed");
+        return Ok("Environment setup already completed".to_string());
+    }
+
+    info!("Starting synchronous environment setup");
+
+    // Use a mutex to prevent concurrent setup operations
+    let _lock = match ENVIRONMENT_SETUP_LOCK.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => {
+            info!("Another environment setup is already in progress, waiting...");
+            // Block until lock is available for synchronous operation
+            ENVIRONMENT_SETUP_LOCK.lock().unwrap()
+        }
+    };
+
+    // Check again if setup was completed while waiting
+    if ENVIRONMENT_SETUP_COMPLETED.load(Ordering::SeqCst) {
+        return Ok("Environment setup completed while waiting".to_string());
+    }
+
+    // Only check/install uv if we can't find uvx already
+    if find_existing_uvx().is_none() {
+        if !check_uv_installed() {
+            install_uv()?;
+        }
+    } else {
+        info!("uvx is already installed, skipping uv installation");
+    }
+
+    // Ensure node environment is ready
+    ensure_node_environment()?;
+
+    info!("Synchronous environment setup completed");
+    Ok("Environment setup completed".to_string())
 }
 
 #[tauri::command]
