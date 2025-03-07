@@ -1070,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "fleur"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "dirs 5.0.1",
  "fleur",
