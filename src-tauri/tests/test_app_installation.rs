@@ -12,7 +12,10 @@ fn test_full_app_lifecycle() {
     // Enable test mode first
     environment::set_test_mode(true);
 
-    let (_config_path, temp_dir) = setup_test_config();
+    let (config_path, temp_dir) = setup_test_config();
+
+    // Set the test config path
+    app::set_test_config_path(Some(config_path));
 
     // Mock home directory
     let original_home = std::env::var("HOME").ok();
@@ -46,20 +49,21 @@ fn test_full_app_lifecycle() {
     }
 
     // Test installation
-    let install_result = app::install("Browser", None);
+    let install_result = app::install("Browser", None, Some("Cursor"));
     assert!(
         install_result.is_ok(),
         "Install failed: {:?}",
         install_result
     );
-    assert!(app::is_installed("Browser").unwrap());
+    assert!(app::is_installed("Browser", Some("Cursor")).unwrap());
 
     // Test uninstallation
-    let uninstall_result = app::uninstall("Browser");
+    let uninstall_result = app::uninstall("Browser", Some("Cursor"));
     assert!(uninstall_result.is_ok());
-    assert!(!app::is_installed("Browser").unwrap());
+    assert!(!app::is_installed("Browser", Some("Cursor")).unwrap());
 
     // Cleanup
+    app::set_test_config_path(None);
     {
         let mut cache = APP_REGISTRY_CACHE.lock().unwrap();
         *cache = None;

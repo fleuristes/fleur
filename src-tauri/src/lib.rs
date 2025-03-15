@@ -1,6 +1,7 @@
 pub mod app;
 pub mod environment;
 pub mod file_utils;
+pub mod clients;
 
 use log::{error, info};
 use simplelog::{ConfigBuilder, LevelFilter, WriteLogger};
@@ -109,6 +110,9 @@ pub fn run() {
         eprintln!("Failed to initialize logger: {}", e);
     }
 
+    // Initialize client path configurations
+    clients::init_client_path_configs();
+
     // Preload dependencies in background
     std::thread::spawn(|| {
         let _ = app::preload_dependencies();
@@ -127,11 +131,19 @@ pub fn run() {
             app::get_app_env,
             app::get_app_registry,
             app::restart_claude_app,
+            app::restart_client_app,
             app::install_fleur_mcp,
             app::uninstall_fleur_mcp,
             app::check_onboarding_completed,
             app::reset_onboarding_completed,
             app::check_claude_installed,
+            app::check_cursor_installed,
+            app::check_client_installed,
+            app::get_supported_clients,
+            app::get_default_client_command,
+            app::set_client_config_path,
+            app::get_client_config_path,
+            app::refresh_app_registry,
             environment::ensure_environment,
             log_from_frontend,
             open_system_url,
