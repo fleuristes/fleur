@@ -111,21 +111,19 @@ pub fn init_client_path_configs() {
                     },
                 );
 
-                // TODO: this might not work but I don't care about cursor in windows for now
                 configs.insert(
                     ClientType::Cursor,
                     ClientPathConfig {
-                        base_dir: home_dir.join(".cursor/"),
+                        base_dir: home_dir.join(".cursor"),
                         config_filename: "mcp.json".to_string(),
                         os: OSType::Windows,
                     },
                 );
 
-                // TODO: this might not work but I don't care about windsurf in windows for now
                 configs.insert(
                     ClientType::Windsurf,
                     ClientPathConfig {
-                        base_dir: home_dir.join(".codeium/windsurf"),
+                        base_dir: home_dir.join(".codeium\\windsurf"),
                         config_filename: "mcp_config.json".to_string(),
                         os: OSType::Windows,
                     },
@@ -207,6 +205,46 @@ pub fn check_client_installed(client: &ClientType) -> Result<bool, String> {
             return Ok(false);
         }
 
+        if *client == ClientType::Cursor {
+            // Check common installation locations for Cursor
+            if let Some(program_files) = dirs::data_local_dir() {
+                let home_dir = dirs::home_dir().unwrap_or_default();
+                let possible_paths = [
+                    program_files.join("Programs\\Cursor\\Cursor.exe"),
+                    home_dir.join("AppData\\Local\\Programs\\Cursor\\Cursor.exe"),
+                ];
+                
+                for path in &possible_paths {
+                    debug!("Checking for Cursor at: {}", path.display());
+                    if path.exists() {
+                        info!("Cursor found at {}", path.display());
+                        return Ok(true);
+                    }
+                }
+            }
+            info!("Cursor not found in common locations");
+            return Ok(false);
+        } else if *client == ClientType::Windsurf {
+            // Check common installation locations for Windsurf
+            if let Some(program_files) = dirs::data_local_dir() {
+                let home_dir = dirs::home_dir().unwrap_or_default();
+                let possible_paths = [
+                    program_files.join("Programs\\Windsurf\\Windsurf.exe"),
+                    home_dir.join("AppData\\Local\\Programs\\Windsurf\\Windsurf.exe"),
+                ];
+                
+                for path in &possible_paths {
+                    debug!("Checking for Windsurf at: {}", path.display());
+                    if path.exists() {
+                        info!("Windsurf found at {}", path.display());
+                        return Ok(true);
+                    }
+                }
+            }
+            info!("Windsurf not found in common locations");
+            return Ok(false);
+        }
+        
         debug!("Unknown client type for Windows: {}", client.as_str());
         return Ok(false);
     }
@@ -264,6 +302,50 @@ pub fn restart_client_app(client: &ClientType) -> Result<String, String> {
             }
         }
 
+        if *client == ClientType::Cursor {
+            if let Some(program_files) = dirs::data_local_dir() {
+                let home_dir = dirs::home_dir().unwrap_or_default();
+                let possible_paths = [
+                    program_files.join("Programs\\Cursor\\Cursor.exe"),
+                    home_dir.join("AppData\\Local\\Programs\\Cursor\\Cursor.exe"),
+                ];
+                
+                for path in &possible_paths {
+                    if path.exists() {
+                        info!("Cursor executable found at: {}", path.display());
+                        Command::new(&path)
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                            .map_err(|e| format!("Failed to restart Cursor: {}", e))?;
+                        return Ok("Cursor app restarted successfully".to_string());
+                    }
+                }
+                
+                return Err("Could not find Cursor.exe to restart".to_string());
+            }
+        } else if *client == ClientType::Windsurf {
+            if let Some(program_files) = dirs::data_local_dir() {
+                let home_dir = dirs::home_dir().unwrap_or_default();
+                let possible_paths = [
+                    program_files.join("Programs\\Windsurf\\Windsurf.exe"),
+                    home_dir.join("AppData\\Local\\Programs\\Windsurf\\Windsurf.exe"),
+                ];
+                
+                for path in &possible_paths {
+                    if path.exists() {
+                        info!("Windsurf executable found at: {}", path.display());
+                        Command::new(&path)
+                            .creation_flags(CREATE_NO_WINDOW)
+                            .spawn()
+                            .map_err(|e| format!("Failed to restart Windsurf: {}", e))?;
+                        return Ok("Windsurf app restarted successfully".to_string());
+                    }
+                }
+                
+                return Err("Could not find Windsurf.exe to restart".to_string());
+            }
+        }
+        
         return Err(format!(
             "Restart not implemented for client: {}",
             client.as_str()
